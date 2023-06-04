@@ -1,0 +1,98 @@
+[
+	[
+		{
+			"flight_id": 2719,
+			"flight_no": "PG0593",
+			"scheduled_departure": "2017-09-05T12:50:00.000Z",
+			"scheduled_arrival": "2017-09-05T15:20:00.000Z",
+			"departure_airport": "DME",
+			"arrival_airport": "KVX"
+		},
+		{
+			"flight_id": 9865,
+			"flight_no": "PG0223",
+			"scheduled_departure": "2017-09-05T08:50:00.000Z",
+			"scheduled_arrival": "2017-09-05T12:15:00.000Z",
+			"departure_airport": "OVB",
+			"arrival_airport": "DME"
+		},
+		{
+			"flight_id": 28547,
+			"flight_no": "PG0638",
+			"scheduled_departure": "2017-09-05T16:15:00.000Z",
+			"scheduled_arrival": "2017-09-05T17:15:00.000Z",
+			"departure_airport": "KVX",
+			"arrival_airport": "SVO"
+		}
+	],
+	[
+		{
+			"aircraft_code": "CN1",
+			"flight_id": 2719,
+			"flight_no": "PG0593",
+			"total": "12"
+		},
+		{
+			"aircraft_code": "773",
+			"flight_id": 9865,
+			"flight_no": "PG0223",
+			"total": "324"
+		},
+		{
+			"aircraft_code": "SU9",
+			"flight_id": 28547,
+			"flight_no": "PG0638",
+			"total": "85"
+		}
+	],
+	[
+		{
+			"flight_id": 2719,
+			"flight_no": "PG0593",
+			"booked": "6"
+		},
+		{
+			"flight_id": 9865,
+			"flight_no": "PG0223",
+			"booked": "191"
+		},
+		{
+			"flight_id": 28547,
+			"flight_no": "PG0638",
+			"booked": "82"
+		}
+	],
+	[
+		{
+			"aircraft_code": "CN1",
+			"flight_no": "PG0593",
+			"flight_id": 2719,
+			"prices": [
+				7700
+			]
+		},
+		{
+			"aircraft_code": "773",
+			"flight_no": "PG0223",
+			"flight_id": 9865,
+			"prices": [
+				27900,
+				30700
+			]
+		},
+		{
+			"aircraft_code": "SU9",
+			"flight_no": "PG0638",
+			"flight_id": 28547,
+			"prices": [
+				7700,
+				8500
+			]
+		}
+	],
+	43300,
+	"f9016c",
+	"1591 810209",
+	1165293759372,
+	"('1165293759372',2719,'Economy',7700)\n,('1165293759372',9865,'Economy',27900)\n,('1165293759372',28547,'Economy',7700)\n;"
+]

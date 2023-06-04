@@ -61,7 +61,27 @@
             }
           }
         ],
-        "responses": {}
+        "responses": {},
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "passenger_id": {
+                    "example": "any"
+                  },
+                  "flight_id": {
+                    "example": "any"
+                  },
+                  "seat_number": {
+                    "example": "any"
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/airports/": {
@@ -225,6 +245,12 @@
                     "example": "any"
                   },
                   "contact_data": {
+                    "example": "any"
+                  },
+                  "fare_condition": {
+                    "example": "any"
+                  },
+                  "date": {
                     "example": "any"
                   },
                   "route": {

@@ -337,18 +337,40 @@ router.post('/booking', async (req, res) => {
         `,
         values: [ticketId, bookingId, userID, passenger_name, contact_data]
     };
+    function generateTicketFlights() {
+        let str = "";
+        for (let i = 0; i < prices.length; i++) {
+            const el = prices[i];
+            str += `('${ticketId}',${el.flight_id},'${fare_condition}',${Math.min(...el.prices)})\n`;
+            if (i != (prices.length - 1))
+                str += ',';
+        }
+        str += ';';
+        return str;
+    }
+    const queryInsertTicketFlight = {
+        name: "insert-ticket-flight",
+        text: `
+        insert into ticket_flights (ticket_no, flight_id, fare_conditions, amount)
+        values
+        ${generateTicketFlights()}
+        `,
+        values: []
+    };
     try {
         await db_1.db.query("BEGIN");
         const insBookingRes = await db_1.db.query(queryInsertBooking);
         const insTicketRes = await db_1.db.query(queryInsertTicket);
+        const insTicketFlight = await db_1.db.query(queryInsertTicketFlight);
         await db_1.db.query("COMMIT");
     }
     catch (err) {
         await db_1.db.query("ROLLBACK");
         res.statusCode = 500;
+        console.log(err);
         res.json(err);
         return;
     }
-    res.json([flights, seats, booked, prices, totalPrice, bookingId, userID, ticketId]);
+    res.json([flights, seats, booked, prices, totalPrice, bookingId, userID, ticketId, generateTicketFlights()]);
 });
 exports.default = router;
