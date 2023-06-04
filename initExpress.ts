@@ -25,10 +25,11 @@ export default () => {
         console.log('Time:', date)
 
         if(langHead){
-            // :::^))) ternary hell fan here - less
+            // :::^))) ternary hell fan here
             lang = langHead.includes(';') ?
                 langHead.split(';')[0].split(',')[1] :
-                langHead.includes('-') ? langHead.split('-')[0] :
+                langHead.includes('-') ?
+                    langHead.split('-')[0] :
                     langHead
         } else
             lang = 'en'
@@ -36,6 +37,8 @@ export default () => {
         console.log('Lang:', lang)
         next()
     })
+
+    app.use(express.json())
 
     app.use('/', general)
     app.use('/airports', airports)

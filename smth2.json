@@ -1,0 +1,7 @@
+{
+	"passenger_name": "asd asd",
+	"contact_data": {"email": "213@123", "phone": "+123"},
+	"route": ["PG0223","PG0593","PG0638"],
+	"fare_condition": "Economy",
+	"date": "2017-09-05"
+}

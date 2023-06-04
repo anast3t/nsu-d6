@@ -26,10 +26,11 @@ exports.default = () => {
         console.log('---');
         console.log('Time:', date);
         if (langHead) {
-            // :::^))) ternary hell fan here - less
+            // :::^))) ternary hell fan here
             lang = langHead.includes(';') ?
                 langHead.split(';')[0].split(',')[1] :
-                langHead.includes('-') ? langHead.split('-')[0] :
+                langHead.includes('-') ?
+                    langHead.split('-')[0] :
                     langHead;
         }
         else
@@ -37,6 +38,7 @@ exports.default = () => {
         console.log('Lang:', lang);
         next();
     });
+    app.use(express_1.default.json());
     app.use('/', general_1.default);
     app.use('/airports', airports_1.default);
     app.use('/routes', routes_1.default);
