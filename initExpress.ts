@@ -1,4 +1,4 @@
-import express, {Express} from "express";
+import express, {Express, Request, Response} from "express";
 import general from "./routes/general";
 import airports from "./routes/airports";
 import routes from "./routes/routes";
@@ -12,6 +12,13 @@ let lang: string = 'ru'
 
 export function getLang (): string{
     return lang
+}
+
+let time = Date.now()
+
+export function getTime(){
+    let current = Date.now()
+    return (current - time) / 1000
 }
 
 export default () => {
@@ -39,7 +46,6 @@ export default () => {
     })
 
     app.use(express.json())
-
     app.use('/', general)
     app.use('/airports', airports)
     app.use('/routes', routes)

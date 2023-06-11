@@ -1,5 +1,5 @@
 import {Request, Response} from "express";
-import {db} from "../db";
+import {pool} from "../db";
 import {getLang} from "../initExpress";
 let parse = require('date-fns/parse')
 let compareAsc = require('date-fns/compareAsc')
@@ -23,6 +23,9 @@ type Flight = {
     arrival_airport: string,
     departure_airport: string,
     fare_conditions: Fare[],
+    arrival_city: {en: string, ru: string},
+    departure_city: {en: string, ru: string},
+    price: string
 }
 
 function time2Date(departure: string, arrival: string){
@@ -37,6 +40,7 @@ function time2Date(departure: string, arrival: string){
     return [departureStamp, arrivalStamp]
 }
 
+//TODO: thread
 router.get('/', async (req: Request, res: Response)=>{
     const pointA = req.query.point_a as string;
     const pointB = req.query.point_b as string;
@@ -46,22 +50,46 @@ router.get('/', async (req: Request, res: Response)=>{
     const ddsplitted = departureDate.split('.').map((val)=>parseInt(val))
     const dow = (new Date(ddsplitted[2], ddsplitted[1], ddsplitted[0])).getUTCDay()
 
+    // const queryAll = {
+    //     name: 'initial-search-routes',
+    //     text: `select * from schedule
+    //            where $1 = ANY(fare_conditions) and
+    //            $2 = ANY(days_of_week) and arrival_airport != $3 and $3 != arrival_city->>'${getLang()}'`,
+    //     values: [bookingClass, dow, pointA]
+    // }
+
+    //INFO: сразу отсеиваются маршруты, у которых нет цены. Соответственно на выходе будет меньше.
     const queryAll = {
         name: 'initial-search-routes',
-        text: `select * from schedule 
-               where $1 = ANY(fare_conditions) and 
-               $2 = ANY(days_of_week) and arrival_airport != $3`,
+        text: ` select sch.flight_no,
+                       aircraft_code,
+                       days_of_week,
+                       departure,
+                       arrival,
+                       arrival_airport,
+                       departure_airport,
+                       fare_conditions,
+                       sch.arrival_city,
+                       sch.departure_city,
+                       price
+                from schedule as sch
+                         inner join (select flight_no, min(amount) as price
+                                     from prices
+                                     where fare_conditions = $1
+                                     group by flight_no, fare_conditions) as p on sch.flight_no = p.flight_no
+                where $1 = ANY (sch.fare_conditions)
+                  and $2 = ANY (days_of_week)
+                  and arrival_airport != $3 and $3 != arrival_city->>'${getLang()}'`,
         values: [bookingClass, dow, pointA]
     }
     let results:Flight[] = []
     try {
-        results = ((await db.query(queryAll)).rows)
+        results = ((await pool.query(queryAll)).rows)
         results.forEach(el=>{
             el.arrival_utc = el.arrival as string
             el.departure_utc = el.departure as string
             [el.departure, el.arrival] = time2Date(el.departure as string, el.arrival as string)
         })
-        // res.json(results)
     } catch(err){
         res.statusCode = 500
         res.json(err)
@@ -70,7 +98,8 @@ router.get('/', async (req: Request, res: Response)=>{
 
     function getConnections(chain: Flight[]){
         const last: Flight = chain[chain.length-1]
-        if(last.arrival_airport == pointB){
+        // @ts-ignore
+        if(last.arrival_airport == pointB || last.arrival_city[getLang()] == pointB){
             return chain
         }
         const previousDep = chain.map(el => el.departure_airport)
@@ -84,11 +113,12 @@ router.get('/', async (req: Request, res: Response)=>{
         if(available.length == 0)
             throw new Error("no els")
         else{
-            let chains: any[] = [] // TODO: type
+            let chains: any[] = []
             available.forEach(el=>{
 
                 let nextChain = chain.concat([el])
-                if(el.arrival_airport == pointB){
+                // @ts-ignore
+                if(el.arrival_airport == pointB || el.arrival_city[getLang()] == pointB ){
                     chains.push(nextChain)
                 } else {
                     if(nextChain.length == connections+1)
@@ -107,7 +137,8 @@ router.get('/', async (req: Request, res: Response)=>{
     }
 
     const firstChain = results.filter((el) => {
-        return el.departure_airport == pointA
+        // @ts-ignore
+        return el.departure_airport == pointA || el.departure_city[getLang()] == pointA
     })
 
     let chains: any[] = []
@@ -143,12 +174,23 @@ router.get('/', async (req: Request, res: Response)=>{
         else return -1
     })
 
-    // res.json(chains)
+    // INFO: регрупнул и стандартизировал вывод, добавил цену
     let ids = chains.map((el)=>{
         if(Array.isArray(el)){
-            return el.map(el=>el.flight_no)
+            let res:{
+                price:number,
+                chain:string[]
+            } = {
+                price: 0,
+                chain: []
+            }
+            el.forEach((el1:Flight):void => {
+                res.chain.push(el1.flight_no)
+                res.price += parseFloat(el1.price)
+            })
+            return res
         } else {
-            return el.flight_no
+            return {chain: [el.flight_no], price: parseFloat(el.price)}
         }
     })
 
@@ -173,7 +215,7 @@ router.get('/', async (req: Request, res: Response)=>{
             values: [uniqueAirports[i]]
         }
         try{
-            let airport = (await db.query(query)).rows[0]
+            let airport = (await pool.query(query)).rows[0]
             airport.coordinates.lat = airport.coordinates.x
             airport.coordinates.lng = airport.coordinates.y
             delete airport.coordinates.x
@@ -197,6 +239,7 @@ router.get('/', async (req: Request, res: Response)=>{
     res.json(send)
 })
 
+//TODO: pool client, isolation
 router.post('/booking', async (req: Request, res: Response)=>{
     type Body = {
         passenger_name: string,
@@ -228,6 +271,8 @@ router.post('/booking', async (req: Request, res: Response)=>{
         return str
     }
 
+    await pool.query("BEGIN")
+
     const queryFlights = {
         name: "get-route-flights",
         text: `
@@ -245,7 +290,7 @@ router.post('/booking', async (req: Request, res: Response)=>{
         values: [date].concat(route)
     }
 
-    let flights =(await db.query(queryFlights)).rows
+    let flights =(await pool.query(queryFlights)).rows
 
     if(flights.length < route.length){
         res.statusCode = 500
@@ -271,7 +316,7 @@ router.post('/booking', async (req: Request, res: Response)=>{
         values: [date, fare_condition].concat(route)
     }
 
-    let seats = (await db.query(queryAllSeats)).rows
+    let seats = (await pool.query(queryAllSeats)).rows
 
     if(seats.length < route.length){
         res.statusCode = 500
@@ -297,7 +342,7 @@ router.post('/booking', async (req: Request, res: Response)=>{
         values: [date, fare_condition].concat(route)
     }
 
-    let prices = (await db.query(queryPrices)).rows
+    let prices = (await pool.query(queryPrices)).rows
 
     if(prices.length < route.length){
         res.statusCode = 500
@@ -322,7 +367,7 @@ router.post('/booking', async (req: Request, res: Response)=>{
         values: [date, fare_condition].concat(route)
     }
 
-    let booked = (await db.query(queryBooked)).rows
+    let booked = (await pool.query(queryBooked)).rows
 
     booked.forEach(el => {
         let totalSeatsInFlight = seats.filter(el1 => el1.flight_no == el.flight_no)
@@ -344,7 +389,7 @@ router.post('/booking', async (req: Request, res: Response)=>{
         values: [bookingId]
     }
     while (1){
-        let reslen = (await db.query(queryCheckId)).rows.length
+        let reslen = (await pool.query(queryCheckId)).rows.length
         if(reslen!==0)
             bookingId = getRandBookingId()
         else
@@ -362,7 +407,7 @@ router.post('/booking', async (req: Request, res: Response)=>{
         values: [userID]
     }
     while (1){
-        let reslen = (await db.query(queryCheckUserId)).rows.length
+        let reslen = (await pool.query(queryCheckUserId)).rows.length
         if(reslen!==0)
             userID = getRandUserId()
         else
@@ -380,7 +425,7 @@ router.post('/booking', async (req: Request, res: Response)=>{
         values: [ticketId]
     }
     while (1){
-        let reslen = (await db.query(queryCheckTicketId)).rows.length
+        let reslen = (await pool.query(queryCheckTicketId)).rows.length
         if(reslen!==0)
             ticketId = getRandTicketId()
         else
@@ -431,15 +476,15 @@ router.post('/booking', async (req: Request, res: Response)=>{
     }
 
     try {
-        await db.query("BEGIN")
 
-        const insBookingRes = await db.query(queryInsertBooking)
-        const insTicketRes = await db.query(queryInsertTicket)
-        const insTicketFlight = await db.query(queryInsertTicketFlight)
+        const insBookingRes = await pool.query(queryInsertBooking)
+        const insTicketRes = await pool.query(queryInsertTicket)
+        const insTicketFlight = await pool.query(queryInsertTicketFlight)
 
-        await db.query("COMMIT")
+        // await db.query("ROLLBACK")
+        await pool.query("COMMIT")
     } catch(err){
-        await db.query("ROLLBACK")
+        await pool.query("ROLLBACK")
         res.statusCode = 500
         console.log(err)
         res.json(err)

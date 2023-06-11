@@ -1,6 +1,6 @@
 import {Request, Response} from "express";
 import {getLang} from "../initExpress";
-import {db} from "../db";
+import {pool} from "../db";
 
 let express = require('express')
 let router = express.Router();
@@ -18,13 +18,20 @@ router.get('/', (req: Request, res: Response)=>{
             from airports_data` + (cityname ? ` where city->>'${getLang()}' = $1` : ''),
         values: cityname ? [cityname]:[]
     }
-    db.query(query)
+    pool.query(query)
         .then(qres => {
             let result = qres.rows
+            result.forEach((el) => {
+                el.coordinates.lng = el.coordinates.x
+                el.coordinates.lat = el.coordinates.y
+                delete el.coordinates.x
+                delete el.coordinates.y
+            })
             res.json(result)
         })
         .catch(err=>{
             res.statusCode = 500
+            console.log(err)
             res.json(err)
         })
 })
@@ -52,21 +59,23 @@ router.get('/:code/inbound', (req: Request, res: Response)=>{
     const query = {
         name: "get-inbound-flights",
         text: `
-            select flight_no,
-                   array_agg(distinct extract(isodow from scheduled_arrival)) as days_of_week,
-                   array_agg(distinct scheduled_arrival::time) as time,
-                   airport_name ->> '${getLang()}' as name,
-                   airport_code          as code,
-                   coordinates,
-                   timezone
-            from flights inner join airports_data ad on flights.departure_airport = ad.airport_code
-            where status = 'Scheduled' and ad.airport_code = $1
-            group by flight_no, airport_name ->> '${getLang()}', airport_code, timezone
+            select  flight_no,
+                    array_agg(distinct extract(dow from scheduled_arrival)) as days_of_week,
+                    array_agg(distinct scheduled_arrival::time)             as time,
+                    airport_name ->> '${getLang()}'                         as name,
+                    airport_code                                            as code,
+                    coordinates,
+                    timezone
+             from flights as f
+                      inner join airports_data ad on f.departure_airport = ad.airport_code
+             where status = 'Scheduled'
+               and f.arrival_airport = $1
+             group by flight_no, airport_name ->> '${getLang()}', airport_code, timezone
         `,
         values: [airportCode]
     }
 
-    db.query(query)
+    pool.query(query)
         .then(qres => {
             let result = qres.rows
             result.forEach(el => regroup(el, 'origin'))
@@ -84,21 +93,23 @@ router.get('/:code/outbound', (req: Request, res: Response)=>{
     const query = {
         name: "get-outbound-flights",
         text: `
-            select flight_no,
-                   array_agg(distinct extract(isodow from scheduled_departure)) as days_of_week,
-                   array_agg(distinct scheduled_departure::time) as time,
-                   airport_name ->> '${getLang()}' as name,
-                   airport_code          as code,
-                   coordinates,
-                   timezone
-            from flights inner join airports_data ad on flights.arrival_airport = ad.airport_code
-            where status = 'Scheduled' and ad.airport_code = $1
-            group by flight_no, airport_name ->> '${getLang()}', airport_code, timezone
+            select  flight_no,
+                    array_agg(distinct extract(dow from scheduled_arrival)) as days_of_week,
+                    array_agg(distinct scheduled_arrival::time)             as time,
+                    airport_name ->> '${getLang()}'                         as name,
+                    airport_code                                            as code,
+                    coordinates,
+                    timezone
+             from flights as f
+                      inner join airports_data ad on f.arrival_airport = ad.airport_code
+             where status = 'Scheduled'
+               and f.departure_airport = $1
+             group by flight_no, airport_name ->> '${getLang()}', airport_code, timezone
         `,
         values: [airportCode]
     }
 
-    db.query(query)
+    pool.query(query)
         .then(qres => {
             let result = qres.rows
             result.forEach(el => regroup(el, 'destination'))

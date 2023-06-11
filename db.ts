@@ -15,19 +15,30 @@
 //
 // export default sequelize
 
-import {Client} from 'pg'
-export const db = new Client({
+import {Client, Pool} from 'pg'
+// export const db = new Client({
+//     host: "localhost",
+//     port: 5432,
+//     database: "demo",
+//     user: "postgres",
+//     password: "postgres"
+// })
+//
+// db.connect()
+//     .then(res => {
+//         console.log("DB connection successful")
+//     })
+//     .catch(err => {
+//         console.error("DB connection refused", err)
+//     })
+
+export const pool = new Pool({
     host: "localhost",
     port: 5432,
     database: "demo",
     user: "postgres",
-    password: "postgres"
+    password: "postgres",
+    max: 20
 })
 
-db.connect()
-    .then(res => {
-        console.log("DB connection successful")
-    })
-    .catch(err => {
-        console.error("DB connection refused", err)
-    })
+

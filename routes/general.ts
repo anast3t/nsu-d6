@@ -1,6 +1,6 @@
 import {Request, Response} from "express";
-import {db} from "../db";
-import {getLang} from "../initExpress";
+import {pool} from "../db";
+import {getLang, getTime} from "../initExpress";
 let express = require('express')
 let router = express.Router();
 let crypto = require('crypto')
@@ -9,15 +9,33 @@ router.get('/', (req: Request, res: Response) => {
     res.send("GOT LANG = " + getLang());
 });
 
+router.get('/heavy', (req: Request, res: Response)=> {
+    const time = parseInt(req.query.time as string)
+    const start = Date.now()
+    const totalStarted = getTime()
+    setTimeout(()=> {
+        const end = Date.now()
+        res.json({time: (end-start)/1000, totalStart: totalStarted})
+    }, time)
+})
+
 router.get('/cities', (req: Request, res: Response)=>{
     const text = `select city->>'${getLang()}' as name, coordinates, timezone from airports_data` as string
 
-    db.query(text).then((qres)=>{
+    pool.query(text).then((qres)=>{
         let result = qres.rows
+        result.forEach(el => {
+            el.coordinates.lng = el.coordinates.x
+            el.coordinates.lat = el.coordinates.y
+            delete el.coordinates.x
+            delete el.coordinates.y
+
+        })
         res.json(result)
     })
 })
 
+//TODO: pool client, isolation
 router.post('/flights/checkin', async (req: Request, res: Response)=>{
     type Body = {
         passenger_id: string, //здесь МОЖНО передавать имя+мыло+телефон, но объективно правильней именно id
@@ -41,7 +59,7 @@ router.post('/flights/checkin', async (req: Request, res: Response)=>{
         values: [flight_id, seat_number]
     }
 
-    let seat_available =(await db.query(queryCheckSeat)).rows.length
+    let seat_available =(await pool.query(queryCheckSeat)).rows.length
 
     if(seat_available !== 0){
         res.statusCode = 500
@@ -59,7 +77,7 @@ router.post('/flights/checkin', async (req: Request, res: Response)=>{
         values: [passenger_id]
     }
 
-    let ticket =(await db.query(queryFetchTicket)).rows
+    let ticket =(await pool.query(queryFetchTicket)).rows
 
     if(ticket.length === 0){
         res.statusCode = 500
@@ -68,6 +86,53 @@ router.post('/flights/checkin', async (req: Request, res: Response)=>{
     }
 
     let ticket_no = ticket[0].ticket_no as string
+
+    const queryBoardingPrice = {
+        name: "get-price-flightno-fare",
+        text: `
+        select p.amount, f.flight_no, tf.fare_conditions
+        from tickets
+            inner join ticket_flights tf on tickets.ticket_no = tf.ticket_no
+            inner join flights f on f.flight_id = tf.flight_id
+            inner join prices p on f.aircraft_code = p.aircraft_code and p.flight_no = f.flight_no
+        where passenger_id = $1 and f.flight_id = $2 and $3 = ANY(p.seat_arr);
+        `,
+        values: [passenger_id, flight_id, seat_number]
+    }
+
+    let dopPrice:any[]|number = (await pool.query(queryBoardingPrice)).rows
+
+    if(dopPrice.length === 0){
+        res.statusCode = 500
+        res.json({"message": "DB has no price!"})
+        return
+    }
+
+    let flight_no = dopPrice[0].flight_no
+    let fare = dopPrice[0].fare_conditions
+    dopPrice = dopPrice[0].amount
+
+    const queryStockPrice = {
+        name: "get-stock-price",
+        text: `
+        select f.flight_no, array_agg(distinct p.amount) as prices
+        from flights as f
+                 inner join prices p on f.flight_no = p.flight_no
+        where fare_conditions = $1 and f.flight_no = $2
+        group by f.flight_no
+        `,
+        values: [fare, flight_no]
+    }
+
+    let stockPrice:any[]|number = (await pool.query(queryStockPrice)).rows
+
+    if(stockPrice.length === 0){
+        res.statusCode = 500
+        res.json({"message": "DB has no stock price!"})
+        return
+    }
+
+    stockPrice = Math.min(...stockPrice[0].prices)
 
     const generateBoardingID = () => {return crypto.randomInt(0, 1000)}
     let boardingId = generateBoardingID()
@@ -81,7 +146,7 @@ router.post('/flights/checkin', async (req: Request, res: Response)=>{
     }
 
     while (1){
-        let reslen = (await db.query(queryCheckBoardingID)).rows.length
+        let reslen = (await pool.query(queryCheckBoardingID)).rows.length
         if(reslen!==0)
             boardingId = generateBoardingID()
         else
@@ -98,19 +163,20 @@ router.post('/flights/checkin', async (req: Request, res: Response)=>{
         values:[ticket_no, flight_id, boardingId, seat_number]
     }
 
+    //проверить полёт
     try {
-        await db.query("BEGIN")
-        const insBoardingPassRes = db.query(queryInsertBoardingPass)
-        await db.query("COMMIT")
+        await pool.query("BEGIN")
+        const insBoardingPassRes = pool.query(queryInsertBoardingPass)
+        await pool.query("COMMIT")
     } catch(err){
-        await db.query("ROLLBACK")
+        await pool.query("ROLLBACK")
         res.statusCode = 500
         console.log(err)
         res.json(err)
         return
     }
 
-    res.json([boardingId])
+    res.json([boardingId, (dopPrice as number - stockPrice as number)])
 })
 
 export default router
